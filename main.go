@@ -1,22 +1,22 @@
 package main
 
 import (
-	"github.com/Velnbur/QueueBot/models"
 	"database/sql"
 	"flag"
-	_ "github.com/mattn/go-sqlite3"
-	tb "github.com/tucnak/telebot"
+	"fmt"
 	"log"
-	"time"
+
+	"github.com/Velnbur/QueueBot/models"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	_ "github.com/mattn/go-sqlite3"
 )
 
-func ListDays(m *tb.Message, s *tb.ReplyMarkup) {
-
-}
+const DEBUG = true
 
 func main() {
 	var TelToken = flag.String("t", "", "Telegram Bot Token")
 	flag.Parse()
+	fmt.Println(TelToken)
 
 	var err error
 
@@ -25,37 +25,37 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bot, err := tb.NewBot(tb.Settings{
-		// You can also set custom API URL.
-		// If field is empty it equals to "https://api.telegram.org".
-		URL: "", //"http://195.129.111.17:8012",
+	defer models.DB.Close()
 
-		Token:  *TelToken,
-		Poller: &tb.LongPoller{Timeout: 10 * time.Second},
-	})
-
+	bot, err := tgbotapi.NewBotAPI(*TelToken)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
-	var selector = &tb.ReplyMarkup{}
-	var btn = selector.Data("\tU+21A2", "next")
+	bot.Debug = true
 
-	selector.Inline(selector.Row(btn))
+	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-	bot.Handle("/start", func(m *tb.Message) {
-		_, err := bot.Send(m.Sender, "Okay, let's start")
-		if err != nil {
-			log.Fatal(err)
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates, err := bot.GetUpdatesChan(u)
+
+	for update := range updates {
+		if update.Message == nil { // ignore any non-Message Updates
+			continue
 		}
-	})
 
-	bot.Handle("/list_days", func(m *tb.Message){
-		_, err := bot.Send(m.Sender, "List for ...", selector)
-		if err != nil {
-			log.Fatal(err)
+		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+
+		if update.Message.IsCommand() {
+			switch update.Message.Command() {
+			case "start":
+				models.AddUser(update.Message.From.ID, update.Message.From.UserName)
+			case "list":
+				var weeks [5]models.Week
+				models.ListWeeks(&weeks)
+			}
 		}
-	})
-
-	bot.Start()
+	}
 }
