@@ -7,11 +7,10 @@ import (
 	"log"
 
 	"github.com/Velnbur/QueueBot/models"
+	srvc "github.com/Velnbur/QueueBot/services"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
 )
-
-const DEBUG = true
 
 func main() {
 	var TelToken = flag.String("t", "", "Telegram Bot Token")
@@ -20,7 +19,7 @@ func main() {
 
 	var err error
 
-	models.DB, err = sql.Open("sqlite3", "queue.sqlite")
+	models.DB, err = sql.Open("sqlite3", "Bot.sqlite")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,23 +37,29 @@ func main() {
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-
 	updates, err := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		if update.Message == nil { // ignore any non-Message Updates
+		if update.Message == nil && update.CallbackQuery == nil { // ignore any non-Message Updates
 			continue
 		}
 
-		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+		if update.CallbackQuery != nil {
+			switch update.CallbackQuery.Data[0] {
+			case 'd':
+				srvc.DaysView(bot, &update)
 
-		if update.Message.IsCommand() {
+			case 't':
+				srvc.TimesView(bot, &update)
+
+			}
+		}
+		if update.Message != nil && update.Message.IsCommand() {
 			switch update.Message.Command() {
 			case "start":
-				models.AddUser(update.Message.From.ID, update.Message.From.UserName)
-			case "list":
-				var weeks [5]models.Week
-				models.ListWeeks(&weeks)
+				srvc.StartView(bot, &update)
+			case "list_weeks":
+				srvc.WeeksView(bot, &update)
 			}
 		}
 	}
